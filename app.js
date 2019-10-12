@@ -23,95 +23,127 @@
 //ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 //POSSIBILITY OF SUCH DAMAGE.
 //
-
-let selfEasyrtcid = '';
+var selfEasyrtcid = '';
 var peers = {};
-var noDCs = {};
-let bloby = new Blob();
-
 let currentCameraState = 'front';
+var dropArea = document.createElement('div');
+var bloby = new Blob();
+var fileSender = null;
+var fileInput;
 
-function buildReceiveAreaName(easyrtcid) {
-	return 'receivearea_' + easyrtcid;
-}
 
 function buildPeerBlockName(easyrtcid) {
 	return 'peerzone_' + easyrtcid;
 }
 
-function blobToFile(theBlob, fileName) {
-	theBlob.lastModifiedDate = new Date();
-	theBlob.name = theBlob.lastModifiedDate.toString().replace(/\ \(\)/g, '') + '.png';
-	return theBlob;
+function buildDragNDropName(easyrtcid) {
+	return 'dragndrop_' + easyrtcid;
+}
+
+function buildReceiveAreaName(easyrtcid) {
+	return 'receivearea_' + easyrtcid;
 }
 
 function sleep(milliseconds) {
 	var start = new Date().getTime();
 	for (var i = 0; i < 1e7; i++) {
-		if ((new Date().getTime() - start) > milliseconds) {
+		if (new Date().getTime() - start > milliseconds) {
 			break;
 		}
 	}
 }
 
+function blobToFile(theBlob, fileName) {
+	theBlob.lastModifiedDate = new Date();
+	theBlob.name = fileName + '.png';
+	return theBlob;
+}
+
 function connect() {
-	if (navigator.userAgent.indexOf("Windows") == -1) {
-		$('start-call').css('visible', 'false');
+	if (navigator.userAgent.indexOf('Windows') == -1) {
+		$('start-call').css('visibility', 'hidden');
 	}
-	//easyrtc.setVideoDims(1280, 720);
-	easyrtc.enableDebug(false);
+	var otherClientsDiv = document.getElementById('otherClients');
+
 	easyrtc.enableDataChannels(true);
+	//easyrtc.enableVideo(false);
+	//easyrtc.enableAudio(false);
 	easyrtc.setRoomOccupantListener(convertListToButtons);
-	//easyrtc.connect('easyrtc.dataFileTransfer', loginSuccess, loginFailure);
-	console.log("I'm here babe");
 
-	easyrtc.easyApp('easyrtc.videoChatHd', 'selfVideo', ['callerVideo'], loginSuccess, loginFailure);
+	easyrtc.setAcceptChecker(function (easyrtcid, responsefn) {
+		responsefn(true);
+		document.getElementById('connectbutton_' + easyrtcid).style.visibility = 'hidden';
+	});
+
+	easyrtc.setDataChannelOpenListener(function (easyrtcid, usesPeer) {
+		var obj = document.getElementById(buildDragNDropName(easyrtcid));
+		console.log(buildDragNDropName(easyrtcid));
+		if (!obj) {
+			console.log('no such object ');
+		}
+		jQuery(obj).addClass('connected');
+		jQuery(obj).removeClass('notConnected');
+	});
+
+	easyrtc.setDataChannelCloseListener(function (easyrtcid) {
+		jQuery(buildDragNDropName(easyrtcid)).addClass('notConnected');
+		jQuery(buildDragNDropName(easyrtcid)).removeClass('connected');
+	});
 
 	//easyrtc.connect('easyrtc.dataFileTransfer', loginSuccess, loginFailure);
+	easyrtc.easyApp('easyrtc.dataFileTransfer', 'selfVideo', ['callerVideo'], loginSuccess, loginFailure);
+
 }
 
-function clearConnectList() {
-	var otherClientDiv = document.getElementById('otherClients');
-	while (otherClientDiv.hasChildNodes()) {
-		otherClientDiv.removeChild(otherClientDiv.lastChild);
+function removeIfPresent(parent, childname) {
+	var item = document.getElementById(childname);
+	if (item) {
+		parent.removeChild(item);
+	} else {
+		console.log("didn't see item " + childname + ' for delete eh');
 	}
 }
 
-function convertListToButtons(roomName, data, isPrimary) {
-	clearConnectList();
-	var otherClientDiv = document.getElementById('otherClients');
-	let receiveZone = document.getElementById('peerZone');
+function performCall(easyrtcid) {
+	alert('easyrtcid' + easyrtcid);
+	easyrtc.hangupAll();
+	if (theirID == '') {
+		sleep(1000);
+		theirID = easyrtcid;
+	}
+	var acceptedCB = function (accepted, caller) {
+		if (!accepted) {
+			easyrtc.showError('CALL-REJECTED', 'Sorry, your call to ' + easyrtc.idToName(caller) + ' was rejected');
+		}
+	};
+	var successCB = function () {};
+	var failureCB = function () {
+		performCall(easyrtcid);
+	};
+	easyrtc.call(easyrtcid, successCB, failureCB, acceptedCB);
+}
 
-	var statusDiv = document.getElementById('status');
+function convertListToButtons(roomName, occupants, isPrimary) {
+	var peerZone = document.getElementById('peerZone');
 
-	function buildReceiveDiv(i) {
-		var div = document.createElement('div');
-		div.id = buildReceiveAreaName(i);
-		div.className = 'receiveBlock';
-		div.style.display = 'none';
-		return div;
+	for (var oldPeer in peers) {
+		if (!occupants[oldPeer]) {
+			removeIfPresent(peerZone, buildPeerBlockName(oldPeer));
+			delete peers[oldPeer];
+		}
 	}
 
-	for (var easyrtcid in data) {
-		var button = document.getElementById('start-call');
-		button.disabled = false;
-		button.onclick = (function (easyrtcid) {
-			return function () {
-				performCall(easyrtcid);
-				easyrtc.setOnHangup(function (easyrtcid, slot) {
-					document.getElementById('start-call').disabled = true;
-				});
-			};
-		})(easyrtcid);
+	function buildDropDiv(easyrtcid) {
+		var statusDiv = document.createElement('div');
+		statusDiv.className = 'dragndropStatus';
 
-		var peerBlock = document.createElement('div');
-		peerBlock.id = buildPeerBlockName(easyrtcid);
-		peerBlock.className = 'peerblock';
-		peerBlock.appendChild(document.createTextNode(' For peer ' + easyrtcid));
-		peerBlock.appendChild(document.createElement('br'));
-		peerBlock.appendChild(buildReceiveDiv(easyrtcid));
-		receiveZone.appendChild(peerBlock);
-		peers[easyrtcid] = true;
+		fileInput = document.createElement('input');
+		fileInput.className = 'fileInput';
+		fileInput.type = 'file';
+
+		dropArea.id = buildDragNDropName(easyrtcid);
+		dropArea.className = 'dragndrop notConnected';
+		dropArea.appendChild(fileInput);
 
 		function updateStatusDiv(state) {
 			switch (state.status) {
@@ -158,13 +190,18 @@ function convertListToButtons(roomName, data, isPrimary) {
 				if (!fileSender) {
 					fileSender = easyrtc_ft.buildFileSender(easyrtcid, updateStatusDiv);
 				}
-				console.log("files before they're sent");
-				console.log(files);
 				fileSender(files, true /* assume binary */ );
 			} else {
 				easyrtc.showError('user-error', 'Wait for the connection to complete before adding more files!');
 			}
 		}
+		easyrtc_ft.buildDragNDropRegion(dropArea, filesHandler);
+
+		fileInput.addEventListener('change', function () {
+			console.log("fileInput.files");
+			console.log(fileInput.files);
+			filesHandler(fileInput.files);
+		});
 
 		$('#seperator').bind('DOMSubtreeModified', function (event) {
 			let filesList = new Array(File);
@@ -172,35 +209,67 @@ function convertListToButtons(roomName, data, isPrimary) {
 			filesList[0] = blobToFile(bloby);
 			filesHandler(filesList);
 		});
+
+		console.log("dropArea");
+		console.log(dropArea);
+
+		var container = document.createElement('div');
+		console.log("container");
+		console.log(container);
+		//container.appendChild(dropArea);
+		container.appendChild(statusDiv);
+		return container;
+	}
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	function buildReceiveDiv(i) {
+		var div = document.createElement('div');
+		div.id = buildReceiveAreaName(i);
+		div.className = 'receiveBlock';
+		div.style.display = 'none';
+		return div;
+	}
+
+	for (var easyrtcid in occupants) {
+		if (!peers[easyrtcid]) {
+			var button = document.getElementById('start-call');
+			theirID = easyrtcid;
+			button.disabled = false;
+			button.onclick = (function (easyrtcid) {
+				return function () {
+					performCall(easyrtcid);
+					easyrtc.setOnHangup(function (easyrtcid, slot) {
+						document.getElementById('start-call').disabled = true;
+					});
+				};
+			})(easyrtcid);
+
+			var peerBlock = document.createElement('div');
+			peerBlock.id = buildPeerBlockName(easyrtcid);
+			peerBlock.className = 'peerblock';
+			peerBlock.appendChild(document.createTextNode(' For peer ' + easyrtcid));
+			peerBlock.appendChild(document.createElement('br'));
+			peerBlock.appendChild(buildReceiveDiv(easyrtcid));
+			peerBlock.appendChild(buildDropDiv(easyrtcid));
+			peerZone.appendChild(peerBlock);
+			peers[easyrtcid] = true;
+
+
+			/*$('#seperator').bind('DOMSubtreeModified', function (event) {
+				let filesList = new Array(File);
+				filesList.areBinary = true;
+				filesList[0] = blobToFile(bloby);
+				filesHandler(filesList);
+			});*/
+		}
 	}
 }
 
-function performCall(easyrtcid) {
-	alert(easyrtcid);
-	easyrtc.hangupAll();
-	sleep(1000);
-	var acceptedCB = function (accepted, caller) {
-		if (!accepted) {
-			easyrtc.showError('CALL-REJECTED', 'Sorry, your call to ' + easyrtc.idToName(caller) + ' was rejected');
-		}
-	};
-	var successCB = function () {};
-	var failureCB = function () {
-		alert("hata");
-		performCall(easyrtcid);
-	};
-	easyrtc.call(easyrtcid, successCB, failureCB, acceptedCB);
-	theirID = easyrtcid;
-}
 
-// THIS CODE IS NEW FOR THE FILE TRANSFER
-
+// AYNI
 function acceptRejectCB(otherGuy, fileNameList, wasAccepted) {
-	console.log("I'm here all fine.");
-	console.log(fileNameList);
-
+	console.log(otherGuy);
 	var receiveBlock = document.getElementById(buildReceiveAreaName(otherGuy));
-	//jQuery(receiveBlock).empty();
+	jQuery(receiveBlock).empty();
 	receiveBlock.style.display = 'inline-block';
 
 	//
@@ -210,7 +279,7 @@ function acceptRejectCB(otherGuy, fileNameList, wasAccepted) {
 	receiveBlock.appendChild(document.createElement('br'));
 	for (var i = 0; i < fileNameList.length; i++) {
 		receiveBlock.appendChild(
-			document.createTextNode(i + '. ->' + fileNameList[i].name + '(' + fileNameList[i].size + ' bytes)')
+			document.createTextNode('  ' + fileNameList[i].name + '(' + fileNameList[i].size + ' bytes)')
 		);
 		receiveBlock.appendChild(document.createElement('br'));
 	}
@@ -220,7 +289,7 @@ function acceptRejectCB(otherGuy, fileNameList, wasAccepted) {
 	var button = document.createElement('button');
 	button.appendChild(document.createTextNode('Accept'));
 	button.onclick = function () {
-		//jQuery(receiveBlock).empty();
+		jQuery(receiveBlock).empty();
 		wasAccepted(true);
 	};
 	receiveBlock.appendChild(button);
@@ -234,11 +303,10 @@ function acceptRejectCB(otherGuy, fileNameList, wasAccepted) {
 	receiveBlock.appendChild(button);
 }
 
+//AYNI
 function receiveStatusCB(otherGuy, msg) {
 	var receiveBlock = document.getElementById(buildReceiveAreaName(otherGuy));
 	if (!receiveBlock) return;
-
-	console.log(msg);
 
 	switch (msg.status) {
 		case 'started':
@@ -269,73 +337,30 @@ function blobAcceptor(otherGuy, blob, filename) {
 	console.log(blob);
 	console.log('filename');
 	console.log(filename);
+	if (fileNames.indexOf(filename) != -1) {
+		return;
+	}
+	fileNames.push(filename);
 	easyrtc_ft.saveAs(blob, filename);
 	let image = document.createElement('img');
 	image.setAttribute('width', '20%');
 	image.setAttribute('height', 'auto');
 	image.setAttribute('src', URL.createObjectURL(blob));
+	$(image).addClass('rotateimg90');
 	document.getElementById('peerZone').appendChild(image);
 }
 
-// THIS CODE IS NEW FOR THE FILE TRANSFER
-
 function loginSuccess(easyrtcid) {
 	selfEasyrtcid = easyrtcid;
-	//easyrtc.connect('easyrtc.dataFileTransfer', loginSuccess, loginFailure);
 	easyrtc_ft.buildFileReceiver(acceptRejectCB, blobAcceptor, receiveStatusCB);
-	document.getElementById('change-camera-source').disabled = false;
-
-	if (navigator.userAgent.indexOf("Windows") != -1) {
-		const mediaSource = new MediaStream();
-		// Older browsers may not have srcObject
-
-
-		let stream = $("#selfVideo")[0].srcObject;
-		console.log("stream");
-		console.log(stream);
-		let tracks = $("#selfVideo")[0].srcObject.getVideoTracks();
-		console.log("tracks");
-		console.log(tracks);
-		tracks.forEach(t => {
-			t.enabled = false;
-		});
-	} else {
-		// müşteri hizmetleri fotoğrafı yer alabilir.
-		alert("mahmut");
-
-		/*$.ajax({
-			type: "GET",
-			url: "videos/vid.mp4",
-			responseType: "blob",
-			success: function (data) {
-				let videoElement = document.createElement('video');
-				videoElement.src = URL.createObjectURL(data);
-				$("cameras").appendChild(videoElement);
-
-			},
-			error: function (xhr) {
-				//debugger;
-				console.log(xhr.responseText);
-				alert(xhr.responseText);
-			}
-		});*/
-
-
-	}
-
-
 }
 
 function loginFailure(errorCode, message) {
 	easyrtc.showError(errorCode, message);
 }
 
-// Sets calls so they are automatically accepted (this is default behaviour)
-easyrtc.setAcceptChecker(function (caller, cb) {
-	cb(true);
-});
+// Aşağıdaki kodlar telefonu tutan kişinin kamerasını değiştirebilmesi ve arka kamerasıyla fotoğraf çekebilmesi içindir;
 
-// back camera control
 function changeCamera(currentCameraState) {
 	console.log(currentCameraState);
 	easyrtc.showError('', currentCameraState);
@@ -344,7 +369,6 @@ function changeCamera(currentCameraState) {
 			var i;
 			for (i = 0; i < list.length; i++) {
 				if (list[i].label.indexOf('back') > 0) {
-					alert('back found');
 					easyrtc.setVideoSource(list[i].id);
 					easyrtc.initMediaSource(function () {
 						var selfVideo = document.getElementById('selfVideo');
@@ -380,20 +404,6 @@ function changeCamera(currentCameraState) {
 	}
 }
 
-function connectFailure(err) {
-	alert(err);
-}
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 function take_photo() {
 	const constraints = {
 		video: {
@@ -418,6 +428,13 @@ function gotMedia(mediaStream) {
 		.then((blob) => {
 			img.setAttribute('src', URL.createObjectURL(blob));
 			img.setAttribute('width', '100%');
+			$(img).addClass('rotateimg90');
+			let inputElement = document.getElementById(buildDragNDropName(theirID));
+			let filesToSend = new Array(File);
+			filesToSend[0] = blobToFile(blob);
+			//inputElement.children[0].value = (blobToFile(blob));
+			console.log(inputElement);
+			console.log("blob");
 			console.log(blob);
 			bloby = blob;
 			document.getElementById('seperator').appendChild(img);
@@ -427,6 +444,10 @@ function gotMedia(mediaStream) {
 				URL.revokeObjectURL(this.src);
 			};*/
 		})
-		.catch((error) => console.error('takePhoto() error:', error));
+		.catch((error) => {
+			modal_PhotoTaker();
+			connect();
+			performCall(theirID);
+		});
 	console.log(imageCapture);
 }
