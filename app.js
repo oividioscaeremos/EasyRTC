@@ -29,8 +29,10 @@ let currentCameraState = 'front';
 var dropArea = document.createElement('div');
 var bloby = new Blob();
 var fileSender = null;
-var fileInput;
-
+var fileInput,
+	fileNames = new Array('');
+var supportsRecording = easyrtc.supportsRecording();
+var touchUpModal = document.getElementById('touchUpModal');
 
 function buildPeerBlockName(easyrtcid) {
 	return 'peerzone_' + easyrtcid;
@@ -55,25 +57,36 @@ function sleep(milliseconds) {
 
 function blobToFile(theBlob, fileName) {
 	theBlob.lastModifiedDate = new Date();
-	theBlob.name = fileName + '.png';
+	theBlob.name = new Date().toISOString() + '.png';
 	return theBlob;
+}
+
+function rotate(parameter) {
+	if (parameter == 'minus') {
+		$('#imageTouchUp').removeClass('rotateimg90');
+	} else {
+		if ($('#imageTouchUp').attr('class').indexOf('rotateimg90') < 0) {
+			$('#imageTouchUp').addClass('rotateimg90');
+			$('.modal-body.image').height($('#imageTouchUp').width() + 40 + 'px');
+		}
+	}
 }
 
 function connect() {
 	if (navigator.userAgent.indexOf('Windows') == -1) {
 		$('start-call').css('visibility', 'hidden');
 	}
+
 	var otherClientsDiv = document.getElementById('otherClients');
 
 	easyrtc.enableDataChannels(true);
-	//easyrtc.enableVideo(false);
-	//easyrtc.enableAudio(false);
+
 	easyrtc.setRoomOccupantListener(convertListToButtons);
 
-	easyrtc.setAcceptChecker(function (easyrtcid, responsefn) {
+	/*easyrtc.setAcceptChecker(function (easyrtcid, responsefn) {
 		responsefn(true);
 		document.getElementById('connectbutton_' + easyrtcid).style.visibility = 'hidden';
-	});
+	});*/
 
 	easyrtc.setDataChannelOpenListener(function (easyrtcid, usesPeer) {
 		var obj = document.getElementById(buildDragNDropName(easyrtcid));
@@ -92,7 +105,10 @@ function connect() {
 
 	//easyrtc.connect('easyrtc.dataFileTransfer', loginSuccess, loginFailure);
 	easyrtc.easyApp('easyrtc.dataFileTransfer', 'selfVideo', ['callerVideo'], loginSuccess, loginFailure);
+}
 
+function disconnect() {
+	easyrtc.hangupAll();
 }
 
 function removeIfPresent(parent, childname) {
@@ -104,23 +120,22 @@ function removeIfPresent(parent, childname) {
 	}
 }
 
-function performCall(easyrtcid) {
-	alert('easyrtcid' + easyrtcid);
+function performCall(othereasyrtcid) {
 	easyrtc.hangupAll();
-	if (theirID == '') {
-		sleep(1000);
-		theirID = easyrtcid;
-	}
+
+	theirID = othereasyrtcid;
+
 	var acceptedCB = function (accepted, caller) {
 		if (!accepted) {
 			easyrtc.showError('CALL-REJECTED', 'Sorry, your call to ' + easyrtc.idToName(caller) + ' was rejected');
 		}
 	};
 	var successCB = function () {};
-	var failureCB = function () {
-		performCall(easyrtcid);
+	var failureCB = function (err) {
+		alert('failure ' + err);
 	};
-	easyrtc.call(easyrtcid, successCB, failureCB, acceptedCB);
+
+	easyrtc.call(othereasyrtcid, successCB, failureCB, acceptedCB);
 }
 
 function convertListToButtons(roomName, occupants, isPrimary) {
@@ -136,14 +151,14 @@ function convertListToButtons(roomName, occupants, isPrimary) {
 	function buildDropDiv(easyrtcid) {
 		var statusDiv = document.createElement('div');
 		statusDiv.className = 'dragndropStatus';
-
-		fileInput = document.createElement('input');
-		fileInput.className = 'fileInput';
-		fileInput.type = 'file';
-
-		dropArea.id = buildDragNDropName(easyrtcid);
-		dropArea.className = 'dragndrop notConnected';
-		dropArea.appendChild(fileInput);
+		//
+		//fileInput = document.createElement('input');
+		//fileInput.className = 'fileInput';
+		//fileInput.type = 'file';
+		//
+		//dropArea.id = buildDragNDropName(easyrtcid);
+		//dropArea.className = 'dragndrop notConnected';
+		//dropArea.appendChild(fileInput);
 
 		function updateStatusDiv(state) {
 			switch (state.status) {
@@ -195,13 +210,13 @@ function convertListToButtons(roomName, occupants, isPrimary) {
 				easyrtc.showError('user-error', 'Wait for the connection to complete before adding more files!');
 			}
 		}
-		easyrtc_ft.buildDragNDropRegion(dropArea, filesHandler);
-
-		fileInput.addEventListener('change', function () {
-			console.log("fileInput.files");
-			console.log(fileInput.files);
-			filesHandler(fileInput.files);
-		});
+		//easyrtc_ft.buildDragNDropRegion(dropArea, filesHandler);
+		//
+		//fileInput.addEventListener('change', function () {
+		//	console.log("fileInput.files");
+		//	console.log(fileInput.files);
+		//	filesHandler(fileInput.files);
+		//});
 
 		$('#seperator').bind('DOMSubtreeModified', function (event) {
 			let filesList = new Array(File);
@@ -210,11 +225,11 @@ function convertListToButtons(roomName, occupants, isPrimary) {
 			filesHandler(filesList);
 		});
 
-		console.log("dropArea");
-		console.log(dropArea);
+		//console.log("dropArea");
+		//console.log(dropArea);
 
 		var container = document.createElement('div');
-		console.log("container");
+		console.log('container');
 		console.log(container);
 		//container.appendChild(dropArea);
 		container.appendChild(statusDiv);
@@ -246,24 +261,15 @@ function convertListToButtons(roomName, occupants, isPrimary) {
 			var peerBlock = document.createElement('div');
 			peerBlock.id = buildPeerBlockName(easyrtcid);
 			peerBlock.className = 'peerblock';
-			peerBlock.appendChild(document.createTextNode(' For peer ' + easyrtcid));
-			peerBlock.appendChild(document.createElement('br'));
+			//peerBlock.appendChild(document.createTextNode(' For peer ' + easyrtcid));
+			//peerBlock.appendChild(document.createElement('br'));
 			peerBlock.appendChild(buildReceiveDiv(easyrtcid));
 			peerBlock.appendChild(buildDropDiv(easyrtcid));
 			peerZone.appendChild(peerBlock);
 			peers[easyrtcid] = true;
-
-
-			/*$('#seperator').bind('DOMSubtreeModified', function (event) {
-				let filesList = new Array(File);
-				filesList.areBinary = true;
-				filesList[0] = blobToFile(bloby);
-				filesHandler(filesList);
-			});*/
 		}
 	}
 }
-
 
 // AYNI
 function acceptRejectCB(otherGuy, fileNameList, wasAccepted) {
@@ -272,35 +278,37 @@ function acceptRejectCB(otherGuy, fileNameList, wasAccepted) {
 	jQuery(receiveBlock).empty();
 	receiveBlock.style.display = 'inline-block';
 
-	//
-	// list the files being offered
-	//
-	receiveBlock.appendChild(document.createTextNode('Files offered'));
-	receiveBlock.appendChild(document.createElement('br'));
-	for (var i = 0; i < fileNameList.length; i++) {
-		receiveBlock.appendChild(
-			document.createTextNode('  ' + fileNameList[i].name + '(' + fileNameList[i].size + ' bytes)')
-		);
+	wasAccepted(true);
+	/*
+		//
+		// list the files being offered
+		//
+		receiveBlock.appendChild(document.createTextNode('Files offered'));
 		receiveBlock.appendChild(document.createElement('br'));
-	}
-	//
-	// provide accept/reject buttons
-	//
-	var button = document.createElement('button');
-	button.appendChild(document.createTextNode('Accept'));
-	button.onclick = function () {
-		jQuery(receiveBlock).empty();
-		wasAccepted(true);
-	};
-	receiveBlock.appendChild(button);
+		for (var i = 0; i < fileNameList.length; i++) {
+			receiveBlock.appendChild(
+				document.createTextNode('  ' + fileNameList[i].name + '(' + fileNameList[i].size + ' bytes)')
+			);
+			receiveBlock.appendChild(document.createElement('br'));
+		}
+		//
+		// provide accept/reject buttons
+		//
+		var button = document.createElement('button');
+		button.appendChild(document.createTextNode('Accept'));
+		button.onclick = function () {
+			jQuery(receiveBlock).empty();
+			wasAccepted(true);
+		};
+		receiveBlock.appendChild(button);
 
-	button = document.createElement('button');
-	button.appendChild(document.createTextNode('Reject'));
-	button.onclick = function () {
-		wasAccepted(false);
-		receiveBlock.style.display = 'none';
-	};
-	receiveBlock.appendChild(button);
+		button = document.createElement('button');
+		button.appendChild(document.createTextNode('Reject'));
+		button.onclick = function () {
+			wasAccepted(false);
+			receiveBlock.style.display = 'none';
+		};
+		receiveBlock.appendChild(button);*/
 }
 
 //AYNI
@@ -332,6 +340,16 @@ function receiveStatusCB(otherGuy, msg) {
 	return true;
 }
 
+function touchUpOnPhoto(photoBlob) {
+	touchUpModal.style.display = 'block';
+	var img = document.getElementById('imageTouchUp');
+	img.setAttribute('src', URL.createObjectURL(photoBlob));
+	const photoWidth = $('#imageTouchUp').width();
+	img.width = $('.modal-body.image').height();
+	img.setAttribute('class', 'rotateimg90');
+
+}
+
 function blobAcceptor(otherGuy, blob, filename) {
 	console.log('blob');
 	console.log(blob);
@@ -341,31 +359,80 @@ function blobAcceptor(otherGuy, blob, filename) {
 		return;
 	}
 	fileNames.push(filename);
-	easyrtc_ft.saveAs(blob, filename);
+	//easyrtc_ft.saveAs(blob, filename);
 	let image = document.createElement('img');
-	image.setAttribute('width', '20%');
-	image.setAttribute('height', 'auto');
 	image.setAttribute('src', URL.createObjectURL(blob));
 	$(image).addClass('rotateimg90');
+	image.setAttribute('width', '10%');
+	image.setAttribute('height', 'auto');
+	image.addEventListener('click', function () {
+		touchUpOnPhoto(blob);
+	});
+	//image.onClick(touchUpOnPhoto(blob));
+
 	document.getElementById('peerZone').appendChild(image);
 }
 
 function loginSuccess(easyrtcid) {
 	selfEasyrtcid = easyrtcid;
 	easyrtc_ft.buildFileReceiver(acceptRejectCB, blobAcceptor, receiveStatusCB);
+
+	// bu kısımda masaüstü kullanıcımızın görüntüsünün karşıya gitmesi engelleniyor.
+	if (navigator.userAgent.indexOf('Windows') != -1 || navigator.userAgent.indexOf('Mac') != -1) {
+		const mediaSource = new MediaStream();
+		// Older browsers may not have srcObject
+
+		let stream = $('#selfVideo')[0].srcObject;
+		console.log('stream');
+		console.log(stream);
+		let tracks = $('#selfVideo')[0].srcObject.getVideoTracks();
+		console.log('tracks');
+		console.log(tracks);
+		tracks.forEach((t) => {
+			t.enabled = false;
+		});
+		$('#selfVideo').css({
+			left: '-9999999px'
+		});
+	}
 }
 
 function loginFailure(errorCode, message) {
 	easyrtc.showError(errorCode, message);
 }
 
-// Aşağıdaki kodlar telefonu tutan kişinin kamerasını değiştirebilmesi ve arka kamerasıyla fotoğraf çekebilmesi içindir;
+// Aşağıdaki kodlar telefonu tutan kişinin arka kamerasıyla fotoğraf çekebilmesi ve görüntülü konuşmada kamera değiştirilebilmesi içindir;
 
-function changeCamera(currentCameraState) {
-	console.log(currentCameraState);
-	easyrtc.showError('', currentCameraState);
+function changeCamera(curr) {
+	/*if (curr == 'front') {
+		easyrtc.setVideoSource(backCameraID);
+		easyrtc.initMediaSource(function () {
+			var selfVideo = document.getElementById('selfVideo');
+			easyrtc.setVideoObjectSrc(selfVideo, easyrtc.getLocalStream());
+			currentCameraState = 'back';
+			performCall(theirID);
+		}, connectFailure);
+		break;
+	} else {
+		easyrtc.setVideoSource(frontCameraID);
+		easyrtc.initMediaSource(function () {
+			var selfVideo = document.getElementById('selfVideo');
+			easyrtc.setVideoObjectSrc(selfVideo, easyrtc.getLocalStream());
+			currentCameraState = 'front';
+			performCall(theirID);
+		}, connectFailure);
+		break;
+	}*/
 	if (currentCameraState == 'front') {
-		easyrtc.getVideoSourceList(function (list) {
+		let stream = $('#selfVideo')[0].srcObject;
+		let tracks = $('#selfVideo')[0].srcObject.getVideoTracks();
+		tracks.forEach((t) => {
+			stream.removeTrack(t);
+			stream.addTrack(backMediaStreamTrack);
+		});
+		easyrtc.renegotiate(theirID);
+		currentCameraState = 'back';
+		/*easyrtc.getVideoSourceList(function (list) {
 			var i;
 			for (i = 0; i < list.length; i++) {
 				if (list[i].label.indexOf('back') > 0) {
@@ -373,17 +440,25 @@ function changeCamera(currentCameraState) {
 					easyrtc.initMediaSource(function () {
 						var selfVideo = document.getElementById('selfVideo');
 						easyrtc.setVideoObjectSrc(selfVideo, easyrtc.getLocalStream());
-						document
-							.getElementById('change-camera-source')
-							.setAttribute('onClick', 'javascript : changeCamera("back")');
-						performCall(theirID);
+						currentCameraState = 'back';
+						easyrtc.renegotiate(theirID);
+						//performCall(theirID);
 					}, connectFailure);
 					break;
 				}
 			}
-		});
+		});*/
 	} else {
-		easyrtc.getVideoSourceList(function (list) {
+		let stream = $('#selfVideo')[0].srcObject;
+		let tracks = stream.getVideoTracks();
+		tracks.forEach((t) => {
+			stream.removeTrack(t);
+			console.log(frontMediaStreamTrack);
+			stream.addTrack(frontMediaStreamTrack);
+		});
+		easyrtc.renegotiate(theirID);
+		currentCameraState = 'front';
+		/*easyrtc.getVideoSourceList(function (list) {
 			var i;
 			for (i = 0; i < list.length; i++) {
 				if (list[i].label.indexOf('front') > 0) {
@@ -391,21 +466,23 @@ function changeCamera(currentCameraState) {
 					easyrtc.initMediaSource(function () {
 						var selfVideo = document.getElementById('selfVideo');
 						easyrtc.setVideoObjectSrc(selfVideo, easyrtc.getLocalStream());
-						document
-							.getElementById('change-camera-source')
-							.setAttribute('onClick', 'javascript : changeCamera("front")');
-						performCall(theirID);
+						currentCameraState = 'front';
+						easyrtc.renegotiate(theirID);
+						//performCall(theirID);
 					}, connectFailure);
-
 					break;
 				}
 			}
-		});
+		});*/
 	}
 }
 
+function connectFailure(err) {
+	alert(err);
+}
+
 function take_photo() {
-	const constraints = {
+	/*const constraints = {
 		video: {
 			deviceId: cameraID ? {
 				exact: cameraID
@@ -415,10 +492,14 @@ function take_photo() {
 	navigator.mediaDevices
 		.getUserMedia(constraints)
 		.then(gotMedia)
-		.catch((error) => console.error('getUserMedia() error:', error));
+		.catch((error) => console.error('getUserMedia() error:', error));*/
+	gotMedia(backMediaStreamTrack);
 }
 
 function gotMedia(mediaStream) {
+	if (mediaStream == null || mediaStream == undefined) {
+		return;
+	}
 	const mediaStreamTrack = mediaStream.getVideoTracks()[0];
 	const imageCapture = new ImageCapture(mediaStreamTrack);
 	const img = document.createElement('img');
@@ -426,15 +507,11 @@ function gotMedia(mediaStream) {
 	imageCapture
 		.takePhoto()
 		.then((blob) => {
+			//alert("mahmutcan");
+			sleep(1000);
 			img.setAttribute('src', URL.createObjectURL(blob));
-			img.setAttribute('width', '100%');
+			img.setAttribute('width', '30%');
 			$(img).addClass('rotateimg90');
-			let inputElement = document.getElementById(buildDragNDropName(theirID));
-			let filesToSend = new Array(File);
-			filesToSend[0] = blobToFile(blob);
-			//inputElement.children[0].value = (blobToFile(blob));
-			console.log(inputElement);
-			console.log("blob");
 			console.log(blob);
 			bloby = blob;
 			document.getElementById('seperator').appendChild(img);
@@ -445,9 +522,62 @@ function gotMedia(mediaStream) {
 			};*/
 		})
 		.catch((error) => {
+			alert(error);
 			modal_PhotoTaker();
 			connect();
 			performCall(theirID);
 		});
 	console.log(imageCapture);
 }
+
+/* KAYIT (RECORDING) İŞLEMİ İÇİN BLOK BAŞLANGIÇ*/
+
+var selfRecorder = null;
+var callerRecorder = null;
+
+function startRecording() {
+	var selfLink = document.getElementById('selfDownloadLink');
+	selfLink.innerText = '';
+
+	selfRecorder = easyrtc.recordToFile(easyrtc.getLocalStream(), selfLink, 'selfVideo');
+	if (selfRecorder) {
+		document.getElementById('startRecording').disabled = true;
+		document.getElementById('stopRecording').disabled = false;
+	} else {
+		window.alert(
+			'Sizin için kayıt başlatılamadı; lütfen müşteriyi bilgilendirerek çözüm için kameranızı ve ses girişinizi kontrol edip sayfayı yenileyin.'
+		);
+		return;
+	}
+
+	var callerLink = document.getElementById('callerDownloadLink');
+	callerLink.innerText = '';
+
+	if (easyrtc.getIthCaller(0)) {
+		callerRecorder = easyrtc.recordToFile(
+			easyrtc.getRemoteStream(easyrtc.getIthCaller(0), null),
+			callerLink,
+			'callerVideo'
+		);
+		if (!callerRecorder) {
+			window.alert(
+				'Karşı taraf için kayıt başlatılamadı. Görüşmenin başlatıldığından ve sağlıklı görüntü/ses aldığınızdan emin olun.'
+			);
+		}
+	} else {
+		callerRecorder = null;
+	}
+}
+
+function endRecording() {
+	if (selfRecorder) {
+		selfRecorder.stop();
+	}
+	if (callerRecorder) {
+		callerRecorder.stop();
+	}
+	document.getElementById('startRecording').disabled = false;
+	document.getElementById('stopRecording').disabled = true;
+}
+
+/* KAYIT (RECORDING) İŞLEMİ İÇİN BLOK BİTİŞ*/
